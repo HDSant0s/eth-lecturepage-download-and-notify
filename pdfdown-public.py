@@ -2,7 +2,6 @@ from bs4 import BeautifulSoup, SoupStrainer
 import httplib2
 import os
 import requests
-import ssl
 from urllib.parse import urlparse
 import urllib.parse
 import getpass
@@ -17,7 +16,7 @@ URLS = {"Parallel Programming" : "https://spcl.inf.ethz.ch/Teaching/2020-pp/",
 
 SORT_BY = {r"AW_T(\d)+" : "Serie", "Minitest" : "Ministests", "Lecture" : "Lectures", "solution" : "Solutions",
             "Loesung" : "Solutions", "Note" : "Lecture Notes", "Serie" : "Serie",
-            r"PP-L(\d)+" : "Lectures", "exercise" : "Exercises", "assignment" : "Exercises"}
+            r"PP-L(\d)+" : "Lectures", r"lec(\d)+" : "Lectures", r"L(\d)+" : "Lectures", "exercise" : "Exercises", "assignment" : "Exercises"}
 
 auth = None
 
@@ -47,7 +46,7 @@ def download(links):
 
 
 def checkLink(link):
-    if (link[-4:] == ".pdf") or (link[-4:] == ".zip"):
+    if (link[-4:] == ".pdf") or (link[-4:] == ".zip") or (link[-5:] == ".docx"):
         return True
 
 def getLinks(sites):
@@ -73,7 +72,7 @@ def getLinks(sites):
 
 def sortBy(filename):
     for match in SORT_BY.items():
-        if re.match(match[0], filename):
+        if len(re.findall(match[0], filename)) > 0:
             return match[1] + "/"
     return ""
 
