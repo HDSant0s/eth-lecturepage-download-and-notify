@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 from bs4 import BeautifulSoup, SoupStrainer
 import httplib2
 import os
