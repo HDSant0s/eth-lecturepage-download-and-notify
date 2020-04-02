@@ -12,6 +12,7 @@ import json
 
 # Configuration variables
 CONFIG = {"DOWNLOAD_DIR" : "", "URLS" : {}, "SORT_BY" : {}}
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".config", "ethpdfdown.json")
 
 # Auth session
 auth = None
@@ -26,15 +27,15 @@ args = parser.parse_args()
 # Load config file
 def loadConfig():
     global CONFIG
-    if not os.path.isdir(".config/"): os.mkdir(".config/")
-    if os.path.isfile(".config/ethpdfdown.json"):
-        with open(".config/ethpdfdown.json", "r") as configFile:
+    if not os.path.isdir(os.path.dirname(CONFIG_FILE_PATH)): os.mkdir(".config/")
+    if os.path.isfile(CONFIG_FILE_PATH):
+        with open(CONFIG_FILE_PATH, "r") as configFile:
             CONFIG = json.load(configFile)
     else: writeConfig()
 
 # Write config file
 def writeConfig():
-    with open(".config/ethpdfdown.json", "w+") as configFile:
+    with open(CONFIG_FILE_PATH, "w+") as configFile:
         json.dump(CONFIG, configFile)
 
 def addUrl(dir, url):
@@ -135,7 +136,7 @@ if __name__ == "__main__":
     if not hasArgs:
         if (CONFIG["DOWNLOAD_DIR"] == ""): print("Downloading to current directory.")
         else: print("Donwloading to", CONFIG["DOWNLOAD_DIR"])
-        
+
         userName = input("Username: ")
         if (userName != ""):
             userPassword = getpass.getpass()
