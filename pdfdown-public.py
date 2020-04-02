@@ -7,24 +7,32 @@ from urllib.parse import urlparse
 import urllib.parse
 import getpass
 import re
+import argparse
+import json
 
+# Configuration variables
 CONFIG = {"DOWNLOAD_DIR" : "", "URLS" : {}, "SORT_BY" : {}}
 
+# Auth session
 auth = None
 
+# Parser setup
 parser = argparse.ArgumentParser(description="Script to download and sort lecture documents")
 parser.add_argument("-d", "--set-directory", nargs=1, metavar="DIRECTORY", help="set download directory")
 parser.add_argument("-u", "--add-url", nargs=2, metavar=("NAME", "URL"), help="add new lecture url")
 parser.add_argument("-s", "--add-subdir", nargs=2, metavar=("REGEX", "SUBDIR"), help="add new regex matched subdirectory")
 args = parser.parse_args()
 
+# Load config file
 def loadConfig():
+    global CONFIG
     if not os.path.isdir(".config/"): os.mkdir(".config/")
     if os.path.isfile(".config/ethpdfdown.json"):
         with open(".config/ethpdfdown.json", "r") as configFile:
             CONFIG = json.load(configFile)
     else: writeConfig()
 
+# Write config file
 def writeConfig():
     with open(".config/ethpdfdown.json", "w+") as configFile:
         json.dump(CONFIG, configFile)
@@ -41,35 +49,46 @@ def setDownloadDir(dir):
     CONFIG["DOWNLOAD_DIR"] = dir
     writeConfig()
 
+# Download files
 def download(links):
     for dir in links:
         for link in links[dir] :
+            # Request only head to chek if file already exists
             head = requests.head(link, allow_redirects=True, auth=auth)
+            # Check if the header contains the filename
             if "Content-Disposition" in head.headers.keys():
                 filename = re.findall("filename=(.+)", head.headers["Content-Disposition"])[0].replace("\"", "").replace(";", "")
+            # Otherwise derive it from the URL
             else:
                 filename = link[link.rfind("/")+1:].replace("%20", " ")
-            filename = dir + "/" + sortBy(filename) + filename
 
-            if not os.path.isfile(filename):
+            # Create absolute path based on configured download directory
+            filePath = os.path.join(CONFIG["DOWNLOAD_DIR"], dir, sortBy(filename), filename)
+
+            # Download if the file does not exist
+            if not os.path.isfile(filePath):
                 response = requests.get(link, allow_redirects=True, auth=auth)
 
-                if(response.status_code == 200):
-                    os.makedirs(os.path.dirname(filename), exist_ok=True)
-                    with open(filename, 'wb') as fd:
+                if (response.status_code == 200):
+                    os.makedirs(os.path.dirname(filePath), exist_ok=True)
+                    with open(filePath, 'wb') as fd:
                         fd.write(response.content)
 
-                        # add file to the list of downloaded objects
                         fd.close
                         print(filename)
+                elif (response.status_code == 401):
+                    print("{}: access restricted.".format(filename))
+                elif (response.status_code == 404):
+                    print("{}: not found.".format(filename))
                 else:
                     print("Url: {}, Response: {}".format(link, response))
 
-
+# Check if link points to a document
 def checkLink(link):
     if (link[-4:] == ".pdf") or (link[-4:] == ".zip") or (link[-5:] == ".docx"):
         return True
 
+# Scrape site dict for links and return dict of directory and link combos
 def getLinks(sites):
     links = {}
 
@@ -88,13 +107,13 @@ def getLinks(sites):
                     href = urllib.parse.urljoin(url, href)
                 if checkLink(href):
                     links[dir].append(href)
-
     return links
 
+# Check if filename matches subdirectory rule
 def sortBy(filename):
-    for match in SORT_BY.items():
+    for match in CONFIG["SORT_BY"].items():
         if re.search(match[0], filename) != None:
-            return match[1] + "/"
+            return match[1]
     return ""
 
 if __name__ == "__main__":
@@ -114,11 +133,14 @@ if __name__ == "__main__":
             addSortRule(params[0], params[1])
 
     if not hasArgs:
+        if (CONFIG["DOWNLOAD_DIR"] == ""): print("Downloading to current directory.")
+        else: print("Donwloading to", CONFIG["DOWNLOAD_DIR"])
+        
         userName = input("Username: ")
         if (userName != ""):
             userPassword = getpass.getpass()
             auth = (userName, userPassword)
 
         print("\nDownloading files...")
-        links = getLinks(URLS)
+        links = getLinks(CONFIG["URLS"])
         download(links)
