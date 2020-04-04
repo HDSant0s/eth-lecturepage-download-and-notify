@@ -55,7 +55,7 @@ def setDownloadDir(dir):
 
 # Download files
 def download(links):
-    for dir in removeDownloaded(links):
+    for dir in links:
         print("\n{}:".format(dir))
         pbar = tqdm(links[dir])
         for link in pbar:
@@ -104,6 +104,7 @@ def checkExist(dir, link):
 
 # Remove links to file that already exist
 def removeDownloaded(links):
+    POOL = Pool(multiprocessing.cpu_count())
     for dir in links:
         links[dir] = [link for link, keep in zip(links[dir], POOL.starmap(checkExist, [(dir, l) for l in links[dir]])) if keep]
     return links
@@ -132,7 +133,7 @@ def getLinks(sites):
                     href = urllib.parse.urljoin(url, href)
                 if checkLink(href):
                     links[dir].append(href)
-    return links
+    return removeDownloaded(links)
 
 # Check if filename matches subdirectory rule
 def sortBy(filename):
@@ -142,7 +143,6 @@ def sortBy(filename):
     return ""
 
 if __name__ == "__main__":
-    POOL = Pool(multiprocessing.cpu_count())
     loadConfig()
 
     hasArgs = False
