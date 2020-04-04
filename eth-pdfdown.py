@@ -10,6 +10,8 @@ import re
 import argparse
 import json
 from tqdm import tqdm
+import multiprocessing
+from multiprocessing import Pool
 
 # Configuration variables
 CONFIG = {"DOWNLOAD_DIR" : "", "URLS" : {}, "SORT_BY" : {}}
@@ -53,15 +55,15 @@ def setDownloadDir(dir):
 
 # Download files
 def download(links):
-    for dir in links:
+    for dir in removeDownloaded(links):
         print("\n{}:".format(dir))
         pbar = tqdm(links[dir])
         for link in pbar:
-            # Request only head to chek if file already exists
-            head = requests.head(link, allow_redirects=True, auth=auth)
+            response = requests.get(link, allow_redirects=True, auth=auth)
+
             # Check if the header contains the filename
-            if "Content-Disposition" in head.headers.keys():
-                filename = re.findall("filename=(.+)", head.headers["Content-Disposition"])[0].replace("\"", "").replace(";", "")
+            if "Content-Disposition" in response.headers.keys():
+                filename = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0].replace("\"", "").replace(";", "")
             # Otherwise derive it from the URL
             else:
                 filename = link[link.rfind("/")+1:].replace("%20", " ")
@@ -69,24 +71,42 @@ def download(links):
             # Create absolute path based on configured download directory
             filePath = os.path.join(CONFIG["DOWNLOAD_DIR"], dir, sortBy(filename), filename)
 
-            # Download if the file does not exist
-            if not os.path.isfile(filePath):
-                pbar.set_description(filename)
-                response = requests.get(link, allow_redirects=True, auth=auth)
+            if (response.status_code == 200):
+                os.makedirs(os.path.dirname(filePath), exist_ok=True)
+                with open(filePath, 'wb') as fd:
+                    fd.write(response.content)
+                    fd.close
+            elif (response.status_code == 401):
+                tqdm.write("{}: access restricted.".format(filename))
+            elif (response.status_code == 404):
+                pass
+                tqdm.write("{}: not found.".format(filename))
+            else:
+                pass
+                tqdm.write("Url: {}, Response: {}".format(link, response))
 
-                if (response.status_code == 200):
-                    os.makedirs(os.path.dirname(filePath), exist_ok=True)
-                    with open(filePath, 'wb') as fd:
-                        fd.write(response.content)
-                        fd.close
-                elif (response.status_code == 401):
-                    tqdm.write("{}: access restricted.".format(filename))
-                elif (response.status_code == 404):
-                    pass
-                    tqdm.write("{}: not found.".format(filename))
-                else:
-                    pass
-                    tqdm.write("Url: {}, Response: {}".format(link, response))
+# Check if file to download exists in dir
+def checkExist(dir, link):
+    # Request only head to chek if file already exists
+    head = requests.head(link, allow_redirects=True, auth=auth)
+    # Check if the header contains the filename
+    if "Content-Disposition" in head.headers.keys():
+        filename = re.findall("filename=(.+)", head.headers["Content-Disposition"])[0].replace("\"", "").replace(";", "")
+    # Otherwise derive it from the URL
+    else:
+        filename = link[link.rfind("/")+1:].replace("%20", " ")
+
+    # Create absolute path based on configured download directory
+    filePath = os.path.join(CONFIG["DOWNLOAD_DIR"], dir, sortBy(filename), filename)
+
+    # Download if the file does not exist
+    return not os.path.isfile(filePath)
+
+# Remove links to file that already exist
+def removeDownloaded(links):
+    for dir in links:
+        links[dir] = [link for link, keep in zip(links[dir], POOL.starmap(checkExist, [(dir, l) for l in links[dir]])) if keep]
+    return links
 
 # Check if link points to a document
 def checkLink(link):
@@ -122,6 +142,7 @@ def sortBy(filename):
     return ""
 
 if __name__ == "__main__":
+    POOL = Pool(multiprocessing.cpu_count())
     loadConfig()
 
     hasArgs = False
