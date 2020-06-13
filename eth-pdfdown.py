@@ -16,6 +16,7 @@ from multiprocessing import Pool
 # Configuration variables
 CONFIG = {"DOWNLOAD_DIR" : "", "URLS" : {}, "SORT_BY" : {}}
 CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".config", "ethpdfdown.json")
+EXTENSIONS = ["pdf", "docx", "doc", "zip", "tar"]
 
 # Auth session
 auth = None
@@ -111,8 +112,9 @@ def removeDownloaded(links):
 
 # Check if link points to a document
 def checkLink(link):
-    if (link[-4:] == ".pdf") or (link[-4:] == ".zip") or (link[-5:] == ".docx"):
-        return True
+    for ext in EXTENSIONS:
+        if link.endswith(ext): return True
+    return False
 
 # Scrape site dict for links and return dict of directory and link combos
 def getLinks(sites):
