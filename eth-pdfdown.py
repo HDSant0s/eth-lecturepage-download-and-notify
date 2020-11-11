@@ -12,11 +12,12 @@ import json
 from tqdm import tqdm
 import multiprocessing
 from multiprocessing import Pool
+from xdg import XDG_CONFIG_HOME
 
 # Configuration variables
 CONFIG = {"DOWNLOAD_DIR" : "", "URLS" : {}, "SORT_BY" : {}}
-CONFIG_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".config", "ethpdfdown.json")
-EXTENSIONS = ["pdf", "docx", "doc", "zip", "tar"]
+CONFIG_FILE_PATH = os.path.join(XDG_CONFIG_HOME, "ethpdfdown.json")
+EXTENSIONS = ["pdf", "docx", "doc", "zip", "tar", "pptx", "ppt"];
 
 # Auth session
 auth = None
@@ -124,7 +125,7 @@ def getLinks(sites):
         url = site[1]
         dir = site[0]
 
-        response = requests.get(url, auth=auth)
+        response = requests.get(url, auth=auth, headers={'User-Agent': 'Custom'})
 
         links[dir] = []
 
