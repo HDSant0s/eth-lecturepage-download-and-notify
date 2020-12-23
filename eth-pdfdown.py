@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-from bs4 import BeautifulSoup, SoupStrainer
+from bs4 import BeautifulSoup
 import httplib2
 import os
 import requests
@@ -129,13 +129,12 @@ def getLinks(sites):
 
         links[dir] = []
 
-        for link in BeautifulSoup(response.text, "html.parser", parse_only=SoupStrainer('a')):
-            if link.has_attr('href'):
-                href = link['href'].replace(" ", "%20")
-                if not (href[:4] == "http"):
-                    href = urllib.parse.urljoin(url, href)
-                if checkLink(href):
-                    links[dir].append(href)
+        for link in BeautifulSoup(response.text, "html.parser").findAll('a', href=True):
+            href = link['href'].replace(" ", "%20")
+            if not (href[:4] == "http"):
+                href = urllib.parse.urljoin(url, href)
+            if checkLink(href):
+                links[dir].append(href)
     return removeDownloaded(links)
 
 # Check if filename matches subdirectory rule
