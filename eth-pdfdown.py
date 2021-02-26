@@ -19,14 +19,17 @@ CONFIG = {"DOWNLOAD_DIR" : "", "URLS" : {}, "SORT_BY" : {}}
 CONFIG_FILE_PATH = os.path.join(XDG_CONFIG_HOME, "ethpdfdown.json")
 EXTENSIONS = ["pdf", "docx", "doc", "zip", "tar", "pptx", "ppt"];
 
-# Auth session
+# Auth
 auth = None
+auth_cookies = None
 
 # Parser setup
 parser = argparse.ArgumentParser(description="Script to download and sort lecture documents")
-parser.add_argument("-d", "--set-directory", nargs=1, metavar="DIRECTORY", help="set download directory")
-parser.add_argument("-u", "--add-url", nargs=2, metavar=("NAME", "URL"), help="add new lecture url")
-parser.add_argument("-s", "--add-subdir", nargs=2, metavar=("REGEX", "SUBDIR"), help="add new regex matched subdirectory")
+parser.add_argument("--directory", nargs=1, metavar="DIRECTORY", help="Set download directory")
+parser.add_argument("-a", "--add-url", nargs=2, metavar=("NAME", "URL"), help="Add new lecture url")
+parser.add_argument("-r", "--add-rule", nargs=2, metavar=("REGEX", "SUBDIR"), help="Add new regex matched subdirectory")
+parser.add_argument("-d", "--delete", nargs=2, metavar=("[l|r]", "INDEX"), help="Delete lecture or rule")
+parser.add_argument("-l", "--list", action='store_true', help='List current letcture URLs')
 args = parser.parse_args()
 
 # Load config file
@@ -43,6 +46,13 @@ def writeConfig():
     with open(CONFIG_FILE_PATH, "w+") as configFile:
         json.dump(CONFIG, configFile)
 
+# ETHZ login to get auth cookie
+def login_ethz(username, password):
+    s = requests.Session()
+    s.post("https://ethz.ch/login/j_security_check", headers={"User-Agent":"Custom"}, data={"j_username":username, "j_password":password, "j_validate":True}, allow_redirects=True)
+
+    return s
+
 def addUrl(dir, url):
     CONFIG["URLS"][dir] = url
     writeConfig()
@@ -55,13 +65,22 @@ def setDownloadDir(dir):
     CONFIG["DOWNLOAD_DIR"] = dir
     writeConfig()
 
+def listLectures():
+    print("Download directory: " + (CONFIG["DOWNLOAD_DIR"] if CONFIG["DOWNLOAD_DIR"] != "" else "None"))
+    print("Lecture URLs:")
+    for i, (d, url) in enumerate(CONFIG["URLS"].items()):
+        print("\t" + str(i) + ". " + d + ": " + url)
+    print("Sorting rules:")
+    for i, (rule, d) in enumerate(CONFIG["SORT_BY"].items()):
+        print("\t" + str(i) + ". " + rule + ": " + d)
+
 # Download files
 def download(links):
     for dir in links:
         print("\n{}:".format(dir))
         pbar = tqdm(links[dir])
         for link in pbar:
-            response = requests.get(link, allow_redirects=True, auth=auth)
+            response = requests.get(link, allow_redirects=True, auth=auth, cookies=auth_cookies)
 
             # Check if the header contains the filename
             if "Content-Disposition" in response.headers.keys():
@@ -90,7 +109,7 @@ def download(links):
 # Check if file to download exists in dir
 def checkExist(dir, link):
     # Request only head to chek if file already exists
-    head = requests.head(link, allow_redirects=True, auth=auth)
+    head = requests.head(link, allow_redirects=True, auth=auth, cookies=auth_cookies)
     # Check if the header contains the filename
     if "Content-Disposition" in head.headers.keys():
         filename = re.findall("filename=(.+)", head.headers["Content-Disposition"])[0].replace("\"", "").replace(";", "")
@@ -115,7 +134,9 @@ def removeDownloaded(links):
 def checkLink(link):
     for ext in EXTENSIONS:
         if link.endswith(ext): return True
-    return False
+    if re.search("https:\/\/polybox.ethz.ch\/.+\/download", link) != None:
+       return True
+    else: return False
 
 # Scrape site dict for links and return dict of directory and link combos
 def getLinks(sites):
@@ -125,7 +146,7 @@ def getLinks(sites):
         url = site[1]
         dir = site[0]
 
-        response = requests.get(url, auth=auth, headers={'User-Agent': 'Custom'})
+        response = requests.get(url, auth=auth, headers={'User-Agent': 'Custom'}, cookies=auth_cookies)
 
         links[dir] = []
 
@@ -133,6 +154,8 @@ def getLinks(sites):
             href = link['href'].replace(" ", "%20")
             if not (href[:4] == "http"):
                 href = urllib.parse.urljoin(url, href)
+            if re.search("https:\/\/polybox.ethz.ch\/", href) != None:
+                href = href + "/download"
             if checkLink(href):
                 links[dir].append(href)
     return removeDownloaded(links)
@@ -150,15 +173,27 @@ if __name__ == "__main__":
     hasArgs = False
     for arg in vars(args):
         params = getattr(args, arg)
-        if params == None: continue
+        if not params: continue
         else: hasArgs = True
 
-        if (arg == "set_directory"):
+        if (arg == "directory"):
             setDownloadDir(params[0])
         elif (arg == "add_url"):
             addUrl(params[0], params[1])
-        elif (arg == "add_subdir"):
+        elif (arg == "add_rule"):
             addSortRule(params[0], params[1])
+        elif (arg == "delete"):
+              if (params[0] == "l"):
+                  if (int(params[1]) < len(CONFIG["URLS"])):
+                    del CONFIG["URLS"][list(CONFIG["URLS"].keys())[int(params[1])]]
+                    writeConfig()
+              elif (params[0] == "r"):
+                  if (int(params[1]) < len(CONFIG["SORT_BY"])):
+                    del CONFIG["SORT_BY"][list(CONFIG["SORT_BY"].keys())[int(params[1])]]
+                    writeConfig()
+              else: print("Invalid argument " + params[0])
+        elif (arg == "list" and params):
+            listLectures()
 
     if not hasArgs:
         if (CONFIG["DOWNLOAD_DIR"] == ""): print("Downloading to current directory.")
@@ -168,6 +203,8 @@ if __name__ == "__main__":
         if (userName != ""):
             userPassword = getpass.getpass()
             auth = (userName, userPassword)
+            sess = login_ethz(userName, userPassword)
+            auth_cookies = sess.cookies
 
         print("\nDownloading files...")
         links = getLinks(CONFIG["URLS"])
