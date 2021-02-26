@@ -83,8 +83,17 @@ def download(links):
             response = requests.get(link, allow_redirects=True, auth=auth, cookies=auth_cookies)
 
             # Check if the header contains the filename
+            # https://stackoverflow.com/questions/37060344/how-to-determine-the-filename-of-content-downloaded-with-http-in-python
             if "Content-Disposition" in response.headers.keys():
-                filename = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0].replace("\"", "").replace(";", "")
+                print(response.headers["Content-Disposition"])
+                filename = re.findall("filename\*=([^;]+)", response.headers["Content-Disposition"], flags=re.IGNORECASE)
+                if not filename:
+                    filename = re.findall("filename=([^;]+)", response.headers["Content-Disposition"], flags=re.IGNORECASE)
+                if "utf-8''" in filename[0].lower():
+                    filename = re.sub("utf-8''", '', filename[0], flags=re.IGNORECASE)
+                else:
+                    filename = filename[0]
+
             # Otherwise derive it from the URL
             else:
                 filename = link[link.rfind("/")+1:].replace("%20", " ")
@@ -130,13 +139,23 @@ def removeDownloaded(links):
         links[dir] = [link for link, keep in zip(links[dir], POOL.starmap(checkExist, [(dir, l) for l in links[dir]])) if keep]
     return links
 
+
+def onedriveDownload (link):
+    import base64
+    data_bytes64 = base64.b64encode(bytes(link, 'utf-8'))
+    data_bytes64_String = data_bytes64.decode('utf-8').replace('/','_').replace('+','-').rstrip("=")
+    resultUrl = f"https://api.onedrive.com/v1.0/shares/u!{data_bytes64_String}/root/content"
+    return resultUrl
+
 # Check if link points to a document
 def checkLink(link):
     for ext in EXTENSIONS:
-        if link.endswith(ext): return True
-    if re.search("https:\/\/polybox.ethz.ch\/.+\/download", link) != None:
-       return True
-    else: return False
+        if link.endswith(ext): return link
+    if re.search("https:\/\/polybox.ethz.ch\/", link) != None:
+        return (link + "/download")
+    elif re.search("https:\/\/1drv.ms\/", link) != None:
+        return onedriveDownload(link)
+    else: return None
 
 # Scrape site dict for links and return dict of directory and link combos
 def getLinks(sites):
@@ -154,10 +173,7 @@ def getLinks(sites):
             href = link['href'].replace(" ", "%20")
             if not (href[:4] == "http"):
                 href = urllib.parse.urljoin(url, href)
-            if re.search("https:\/\/polybox.ethz.ch\/", href) != None:
-                href = href + "/download"
-            if checkLink(href):
-                links[dir].append(href)
+            if checkLink(href): links[dir].append(checkLink(href))
     return removeDownloaded(links)
 
 # Check if filename matches subdirectory rule
