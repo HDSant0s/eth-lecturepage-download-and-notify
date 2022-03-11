@@ -53,16 +53,16 @@ def login_ethz(username, password):
 
     return s
 
-def addUrl(dir, url):
-    CONFIG["URLS"][dir] = url
+def addUrl(directory, url):
+    CONFIG["URLS"][directory] = url
     writeConfig()
 
 def addSortRule(reg, subDir):
     CONFIG["SORT_BY"][reg] = subDir
     writeConfig()
 
-def setDownloadDir(dir):
-    CONFIG["DOWNLOAD_DIR"] = dir
+def setDownloadDir(directory):
+    CONFIG["DOWNLOAD_DIR"] = directory
     writeConfig()
 
 def listLectures():
@@ -76,16 +76,25 @@ def listLectures():
 
 # Download files
 def download(links):
-    for dir in links:
-        print("\n{}:".format(dir))
-        pbar = tqdm(links[dir])
+    for directory in links:
+        print("\n{}:".format(directory))
+
+        dirpath = os.path.join(CONFIG["DOWNLOAD_DIR"], directory)
+
+        creds = None
+        if os.path.exists(dirpath) and ".creds" in os.listdir(dirpath):
+            with open(os.path.join(dirpath, ".creds"), "r") as credfile:
+                credsj = json.load(credfile)
+                creds = (credsj["user"], credsj["password"])
+
+        pbar = tqdm(links[directory])
         for link in pbar:
-            response = requests.get(link, allow_redirects=True, auth=auth, cookies=auth_cookies)
+            response = requests.get(link, allow_redirects=True, auth=auth if not creds else creds,
+                                    cookies=auth_cookies)
 
             # Check if the header contains the filename
             # https://stackoverflow.com/questions/37060344/how-to-determine-the-filename-of-content-downloaded-with-http-in-python
             if "Content-Disposition" in response.headers.keys():
-                print(response.headers["Content-Disposition"])
                 filename = re.findall("filename\*=([^;]+)", response.headers["Content-Disposition"], flags=re.IGNORECASE)
                 if not filename:
                     filename = re.findall("filename=([^;]+)", response.headers["Content-Disposition"], flags=re.IGNORECASE)
@@ -99,7 +108,7 @@ def download(links):
                 filename = link[link.rfind("/")+1:].replace("%20", " ")
 
             # Create absolute path based on configured download directory
-            filePath = os.path.join(CONFIG["DOWNLOAD_DIR"], dir, sortBy(filename), filename)
+            filePath = os.path.join(dirpath, sortBy(filename), filename)
 
             if (response.status_code == 200):
                 os.makedirs(os.path.dirname(filePath), exist_ok=True)
@@ -116,7 +125,8 @@ def download(links):
                 tqdm.write("Url: {}, Response: {}".format(link, response))
 
 # Check if file to download exists in dir
-def checkExist(dir, link):
+
+def checkExist(directory, link):
     # Request only head to chek if file already exists
     head = requests.head(link, allow_redirects=True, auth=auth, cookies=auth_cookies)
     # Check if the header contains the filename
@@ -127,7 +137,7 @@ def checkExist(dir, link):
         filename = link[link.rfind("/")+1:].replace("%20", " ")
 
     # Create absolute path based on configured download directory
-    filePath = os.path.join(CONFIG["DOWNLOAD_DIR"], dir, sortBy(filename), filename)
+    filePath = os.path.join(CONFIG["DOWNLOAD_DIR"], directory, sortBy(filename), filename)
 
     # Download if the file does not exist
     return not os.path.isfile(filePath)
@@ -135,10 +145,9 @@ def checkExist(dir, link):
 # Remove links to file that already exist
 def removeDownloaded(links):
     POOL = Pool(multiprocessing.cpu_count())
-    for dir in links:
-        links[dir] = [link for link, keep in zip(links[dir], POOL.starmap(checkExist, [(dir, l) for l in links[dir]])) if keep]
+    for directory in links:
+        links[directory] = [link for link, keep in zip(links[directory], POOL.starmap(checkExist, [(directory, l) for l in links[directory]])) if keep]
     return links
-
 
 def onedriveDownload (link):
     import base64
@@ -163,17 +172,17 @@ def getLinks(sites):
 
     for site in sites.items():
         url = site[1]
-        dir = site[0]
+        directory = site[0]
 
         response = requests.get(url, auth=auth, headers={'User-Agent': 'Custom'}, cookies=auth_cookies)
 
-        links[dir] = []
+        links[directory] = []
 
         for link in BeautifulSoup(response.text, "html.parser").findAll('a', href=True):
             href = link['href'].replace(" ", "%20")
             if not (href[:4] == "http"):
                 href = urllib.parse.urljoin(url, href)
-            if checkLink(href): links[dir].append(checkLink(href))
+            if checkLink(href): links[directory].append(checkLink(href))
     return removeDownloaded(links)
 
 # Check if filename matches subdirectory rule
